@@ -23,7 +23,6 @@ var fileType string
 var output string
 
 func init() {
-
 	flag.StringVar(&fileType, "type", "jpg", "file type to output")
 	flag.StringVar(&fileType, "t", "jpg", "shorthand for type")
 
@@ -34,6 +33,26 @@ func init() {
 func main() {
 	flag.Parse()
 
+	// Determine output filename
+	outputFile := determineOutputFilename(fileType, output)
+
+	// Generate the image
+	img, err := generateImage(flag.Args())
+	if err != nil {
+		log.Fatalf("Failed to generate image: %v", err)
+	}
+
+	// Save the image
+	err = saveImage(img, outputFile, fileType)
+	if err != nil {
+		log.Fatalf("Failed to save image: %v", err)
+	}
+
+	log.Println("Done")
+}
+
+// determineOutputFilename adjusts the output filename based on file type
+func determineOutputFilename(fileType, output string) string {
 	if strings.ToLower(fileType) == "png" {
 		output = strings.Replace(output, ".jpg", ".png", -1)
 		if !strings.HasSuffix(output, ".png") {
@@ -44,18 +63,18 @@ func main() {
 			output = output + ".jpg"
 		}
 	}
+	return output
+}
 
+// generateImage creates a random striped image with text overlay
+func generateImage(args []string) (*image.RGBA, error) {
 	width := 1000
 	height := 500
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 
+	// Generate random colors for stripes
 	cols := make([]color.RGBA, 5)
-	white := color.RGBA{
-		R: 0xff,
-		G: 0xff,
-		B: 0xff,
-		A: 0xff,
-	}
+	white := color.RGBA{R: 0xff, G: 0xff, B: 0xff, A: 0xff}
 
 	for i := range cols {
 		col := color.RGBA{
@@ -67,6 +86,7 @@ func main() {
 		cols[i] = col
 	}
 
+	// Draw colored stripes and white footer
 	for x := range width {
 		for y := range height {
 			if y < 420 {
@@ -77,17 +97,29 @@ func main() {
 		}
 	}
 
+	// Add text overlay
+	err := addTextOverlay(img, args)
+	if err != nil {
+		return nil, err
+	}
+
+	return img, nil
+}
+
+// addTextOverlay adds timestamp and title text to the image
+func addTextOverlay(img *image.RGBA, args []string) error {
 	f, err := opentype.Parse(gomono.TTF)
 	if err != nil {
-		log.Fatalf("Failed to open packaged TTF: %v", err)
+		return err
 	}
+
 	face, err := opentype.NewFace(f, &opentype.FaceOptions{
 		Size:    32,
 		DPI:     72,
 		Hinting: font.HintingNone,
 	})
 	if err != nil {
-		log.Fatalf("Failed to create font face: %v", err)
+		return err
 	}
 
 	d := &font.Drawer{
@@ -96,30 +128,33 @@ func main() {
 		Face: face,
 		Dot:  fixed.Point26_6{X: fixed.Int26_6(1000), Y: fixed.Int26_6(29000)},
 	}
+
 	t := time.Now()
 	d.DrawString("Generated: " + t.Format(time.DateTime))
 	d.Dot = fixed.Point26_6{X: fixed.Int26_6(1000), Y: fixed.Int26_6(31000)}
-	if len(flag.Args()) >= 1 {
-		d.DrawString(strings.Join(flag.Args(), " "))
+
+	if len(args) >= 1 {
+		d.DrawString(strings.Join(args, " "))
 	} else {
 		d.DrawString("[no title]")
 	}
 
-	newFile, err := os.Create(output)
+	return nil
+}
+
+// saveImage writes the image to a file in the specified format
+func saveImage(img image.Image, filename, format string) error {
+	newFile, err := os.Create(filename)
 	if err != nil {
-		log.Fatalf("Failed to create file %v", err)
+		return err
 	}
 	defer newFile.Close()
 
 	writer := bufio.NewWriter(newFile)
-	defer writer.Flush() // Ensure buffer is flushed
+	defer writer.Flush()
 
-	if strings.ToLower(fileType) == "png" {
-		if err := png.Encode(writer, img); err != nil {
-			log.Fatalf("Failed to encode image %v", err)
-		}
-	} else if err := jpeg.Encode(writer, img, &jpeg.Options{Quality: 100}); err != nil {
-		log.Fatalf("Failed to encode image %v", err)
+	if strings.ToLower(format) == "png" {
+		return png.Encode(writer, img)
 	}
-	log.Println("Done")
+	return jpeg.Encode(writer, img, &jpeg.Options{Quality: 100})
 }
