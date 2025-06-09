@@ -86,6 +86,9 @@ func main() {
 		DPI:     72,
 		Hinting: font.HintingNone,
 	})
+	if err != nil {
+		log.Fatalf("Failed to create font face: %v", err)
+	}
 
 	d := &font.Drawer{
 		Dst:  img,
@@ -108,11 +111,14 @@ func main() {
 	}
 	defer newFile.Close()
 
+	writer := bufio.NewWriter(newFile)
+	defer writer.Flush() // Ensure buffer is flushed
+
 	if strings.ToLower(fileType) == "png" {
-		if err := png.Encode(bufio.NewWriter(newFile), img); err != nil {
+		if err := png.Encode(writer, img); err != nil {
 			log.Fatalf("Failed to encode image %v", err)
 		}
-	} else if err := jpeg.Encode(bufio.NewWriter(newFile), img, &jpeg.Options{Quality: 100}); err != nil {
+	} else if err := jpeg.Encode(writer, img, &jpeg.Options{Quality: 100}); err != nil {
 		log.Fatalf("Failed to encode image %v", err)
 	}
 	log.Println("Done")
